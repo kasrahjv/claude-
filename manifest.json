@@ -1,0 +1,87 @@
+function normalizeToUrl(input) {
+  const value = input.trim();
+  if (!value) return null;
+
+  // Looks like a domain or already has a protocol -> treat as a site.
+  const looksLikeDomain = /^([a-z0-9-]+\.)+[a-z]{2,}(\/.*)?$/i.test(value);
+  if (/^https?:\/\//i.test(value)) return value;
+  if (looksLikeDomain) return `https://${value}`;
+
+  // Otherwise treat it as a search query.
+  return `https://www.google.com/search?q=${encodeURIComponent(value)}`;
+}
+
+function loadFavorites() {
+  chrome.storage.local.get({ favorites: [] }, (data) => {
+    renderFavorites(data.favorites);
+  });
+}
+
+function renderFavorites(favorites) {
+  const container = document.getElementById('favorites');
+  container.innerHTML = '';
+
+  if (favorites.length === 0) {
+    container.innerHTML = '<div id="empty">No favorites saved yet.</div>';
+    return;
+  }
+
+  favorites.forEach((url, index) => {
+    const row = document.createElement('div');
+    row.className = 'fav';
+
+    const label = document.createElement('span');
+    label.textContent = url.replace(/^https?:\/\//, '');
+    label.title = url;
+    label.addEventListener('click', () => {
+      chrome.tabs.create({ url, active: true });
+    });
+
+    const remove = document.createElement('span');
+    remove.className = 'remove';
+    remove.textContent = '✕';
+    remove.title = 'Remove favorite';
+    remove.addEventListener('click', (e) => {
+      e.stopPropagation();
+      chrome.storage.local.get({ favorites: [] }, (data) => {
+        const updated = data.favorites.filter((_, i) => i !== index);
+        chrome.storage.local.set({ favorites: updated }, () => renderFavorites(updated));
+      });
+    });
+
+    row.appendChild(label);
+    row.appendChild(remove);
+    container.appendChild(row);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const input = document.getElementById('site');
+  const openBtn = document.getElementById('openBtn');
+  const saveBtn = document.getElementById('saveBtn');
+
+  function openSite() {
+    const url = normalizeToUrl(input.value);
+    if (!url) return;
+    chrome.tabs.create({ url, active: true });
+  }
+
+  function saveFavorite() {
+    const url = normalizeToUrl(input.value);
+    if (!url) return;
+    chrome.storage.local.get({ favorites: [] }, (data) => {
+      if (!data.favorites.includes(url)) {
+        const updated = [...data.favorites, url];
+        chrome.storage.local.set({ favorites: updated }, () => renderFavorites(updated));
+      }
+    });
+  }
+
+  openBtn.addEventListener('click', openSite);
+  saveBtn.addEventListener('click', saveFavorite);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') openSite();
+  });
+
+  loadFavorites();
+});
